@@ -84,3 +84,7 @@ coverage.xml
 
 # Pytest
 .pytest_cache/
+
+# Credentials anywhere on the project
+*.credentials
+
