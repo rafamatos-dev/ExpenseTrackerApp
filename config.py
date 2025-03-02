@@ -1,4 +1,3 @@
-# config.py - Configuration settings
 import os
 from dotenv import load_dotenv
 
@@ -14,8 +13,13 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     DEBUG = False
 
+class TestingConfig(Config):
+    TESTING = True
+    MONGO_URI = os.getenv('TEST_MONGO_URI', 'mongodb://localhost:27017/testFlaskApp')
+
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
+    'testing': TestingConfig,
     'default': DevelopmentConfig
 }

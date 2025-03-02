@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Flask MongoDB App{% endblock %}
+
+{% block content %}
+<section class="container">
+    <h1>Welcome to Flask MongoDB App</h1>
+    <p>This is a simple Flask application with MongoDB integration.</p>
+    
+    <div id="items-container">
+        <h2>Items</h2>
+        <ul id="items-list">
+            <!-- Items will be loaded here via JavaScript -->
+        </ul>
+        
+        <form id="add-item-form">
+            <h3>Add New Item</h3>
+            <div class="form-group">
+                <label for="item-name">Name:</label>
+                <input type="text" id="item-name" required>
+            </div>
+            <div class="form-group">
+                <label for="item-description">Description:</label>
+                <textarea id="item-description" required></textarea>
+            </div>
+            <button type="submit">Add Item</button>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block additional_js %}
+<script>
+    // Function to fetch and display items
+    async function loadItems() {
+        try {
+            const response = await fetch('/api/items');
+            const items = await response.json();
+            const itemsList = document.getElementById('items-list');
+            itemsList.innerHTML = '';
+            
+            items.forEach(item => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <strong>${item.name}</strong>
+                    <p>${item.description}</p>
+                    <button class="delete-btn" data-id="${item.id}">Delete</button>
+                `;
+                itemsList.appendChild(li);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    const itemId = this.getAttribute('data-id');
+                    await deleteItem(itemId);
+                });
+            });
+        } catch (error) {
+            console.error('Error loading items:', error);
+        }
+    }
+    
+    // Function to add a new item
+    async function addItem(name, description) {
+        try {
+            const response = await fetch('/api/items', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: Date.now().toString(), // Simple unique ID
+                    name: name,
+                    description: description
+                })
+            });
+            
+            if (response.ok) {
+                loadItems(); // Reload items after adding
+            }
+        } catch (error) {
+            console.error('Error adding item:', error);
+        }
+    }
+    
+    // Function to delete an item
+    async function deleteItem(itemId) {
+        try {
+            const response = await fetch(`/api/items/${itemId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                loadItems(); // Reload items after deleting
+            }
+        } catch (error) {
+            console.error('Error deleting item:', error);
+        }
+    }
+    
+    // Event listener for form submission
+    document.getElementById('add-item-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const name = document.getElementById('item-name').value;
+        const description = document.getElementById('item-description').value;
+        
+        addItem(name, description);
+        
+        // Clear form fields
+        document.getElementById('item-name').value = '';
+        document.getElementById('item-description').value = '';
+    });
+    
+    // Load items when the page loads
+    document.addEventListener('DOMContentLoaded', loadItems);
+</script>
+{% endblock %}
