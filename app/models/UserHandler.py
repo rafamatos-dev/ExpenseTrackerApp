@@ -1,5 +1,6 @@
-from database import get_db
-from models.User import User
+# Fix for app/models/UserHandler.py
+from app.database import get_db  # Use absolute import path
+from app.models.User import User
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
@@ -9,8 +10,8 @@ class UserRepository:
     """
     
     def __init__(self):
-        self.db = get_db()
-        self.collection = self.db.users
+        self.db = get_db().db  # Access the db attribute of PyMongo instance
+        self.collection = self.db.users  # Use lowercase collection name for consistency
         
         # Ensure indexes for performance and constraints
         self._ensure_indexes()

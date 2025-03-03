@@ -1,6 +1,7 @@
+# app/routes/UserRoutes.py
 from flask import Blueprint, request, jsonify, current_app
-from models.UserHandler import UserRepository
-from models.User import User
+from app.models.UserHandler import UserRepository
+from app.models.User import User
 from bson.json_util import dumps
 import json
 

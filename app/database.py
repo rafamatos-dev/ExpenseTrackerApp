@@ -1,4 +1,4 @@
-# database.py - Database connection management
+# app/database.py - Database connection management
 from flask_pymongo import PyMongo
 
 # MongoDB instance

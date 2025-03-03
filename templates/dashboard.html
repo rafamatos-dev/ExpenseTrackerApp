@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Expense Dashboard - Flask MongoDB App{% endblock %}
+
+{% block additional_css %}
+<style>
+    .dashboard-container {
+        padding: 20px;
+    }
+    
+    .dashboard-header {
+        margin-bottom: 30px;
+    }
+    
+    .stats-card {
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .stats-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #3498db;
+    }
+    
+    .stats-label {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+    }
+    
+    .chart-container {
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+        height: 300px;
+    }
+    
+    .expense-list {
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .expense-item {
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .expense-item:last-child {
+        border-bottom: none;
+    }
+    
+    .expense-date {
+        color: #7f8c8d;
+        font-size: 0.8rem;
+    }
+    
+    .expense-amount {
+        font-weight: bold;
+    }
+    
+    .category-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        color: white;
+    }
+    
+    .filter-container {
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="dashboard-container">
+    <div class="dashboard-header">
+        <h1>Expense Dashboard</h1>
+        <p>Overview of your financial activity</p>
+    </div>
+
+    <div class="filter-container">
+        <form id="date-filter-form">
+            <div class="row">
+                <div class="col-md-4">
+                    <label for="period-select">Time Period:</label>
+                    <select id="period-select" class="form-control">
+                        <option value="month">This Month</option>
+                        <option value="3months">Last 3 Months</option>
+                        <option value="6months">Last 6 Months</option>
+                        <option value="year">This Year</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+                <div class="col-md-3 custom-date-range" style="display: none;">
+                    <label for="start-date">Start Date:</label>
+                    <input type="date" id="start-date" class="form-control">
+                </div>
+                <div class="col-md-3 custom-date-range" style="display: none;">
+                    <label for="end-date">End Date:</label>
+                    <input type="date" id="end-date" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-primary form-control">Apply</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="row">
+        <!-- Summary Stats -->
+        <div class="col-md-4">
+            <div class="stats-card">
+                <div class="stats-value" id="total-expenses">$0.00</div>
+                <div class="stats-label">Total Expenses</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stats-card">
+                <div class="stats-value" id="avg-expense">$0.00</div>
+                <div class="stats-label">Average Expense</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stats-card">
+                <div class="stats-value" id="expense-count">0</div>
+                <div class="stats-label">Number of Expenses</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Expenses by Category Chart -->
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h3>Expenses by Category</h3>
+                <canvas id="category-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Monthly Expenses Chart -->
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h3>Monthly Expenses</h3>
+                <canvas id="monthly-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Payment Method Chart -->
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h3>Expenses by Payment Method</h3>
+                <canvas id="payment-method-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Recent Expenses -->
+        <div class="col-md-6">
+            <div class="expense-list">
+                <h3>Recent Expenses</h3>
+                <div id="recent-expenses">
+                    <!-- Expenses will be loaded here via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block additional_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Store charts as global variables so we can update them
+    let categoryChart, monthlyChart, paymentMethodChart;
+    let categoryColors = {};
+    let userId = localStorage.getItem('userId') || ''; // Replace with actual user ID from your auth system
+    
+    // Format currency
+    function formatCurrency(amount) {
+        return '$' + parseFloat(amount).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+    }
+    
+    // Format date
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+    
+    // Get date range based on selected period
+    function getDateRange(period) {
+        const now = new Date();
+        let startDate, endDate = new Date(now);
+        
+        switch (period) {
+            case 'month':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+            case '3months':
+                startDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+                break;
+            case '6months':
+                startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+                break;
+            case 'year':
+                startDate = new Date(now.getFullYear(), 0, 1);
+                break;
+            case 'custom':
+                startDate = new Date(document.getElementById('start-date').value);
+                endDate = new Date(document.getElementById('end-date').value);
+                break;
+            default:
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        }
+        
+        return {
+            startDate: startDate.toISOString().split('T')[0],
+            endDate: endDate.toISOString().split('T')[0]
+        };
+    }
+    
+    // Load categories for the user
+    async function loadCategories() {
+        try {
+            const response = await fetch(`/api/categories/user/${userId}`);
+            const data = await response.json();
+            
+            // Create a mapping of category IDs to colors and names
+            data.categories.forEach(category => {
+                categoryColors[category._id] = {
+                    color: category.color,
+                    name: category.name
+                };
+            });
+            
+            return data.categories;
+        } catch (error) {
+            console.error('Error loading categories:', error);
+            return [];
+        }
+    }
+    
+    // Load expenses based on filters
+    async function loadExpenses(startDate, endDate) {
+        try {
+            const url = `/api/expenses/user/${userId}?limit=100&start_date=${startDate}&end_date=${endDate}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.expenses;
+        } catch (error) {
+            console.error('Error loading expenses:', error);
+            return [];
+        }
+    }
+    
+    // Load expense summaries
+    async function loadCategorySummary(startDate, endDate) {
+        try {
+            const url = `/api/expenses/summary/category/${userId}?start_date=${startDate}&end_date=${endDate}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.summary;
+        } catch (error) {
+            console.error('Error loading category summary:', error);
+            return [];
+        }
+    }
+    
+    async function loadMonthlySummary(year) {
+        try {
+            const url = `/api/expenses/summary/month/${userId}?year=${year || new Date().getFullYear()}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.summary;
+        } catch (error) {
+            console.error('Error loading monthly summary:', error);
+            return [];
+        }
+    }
+    
+    async function loadPaymentMethodSummary(startDate, endDate) {
+        try {
+            const url = `/api/expenses/summary/payment-method/${userId}?start_date=${startDate}&end_date=${endDate}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.summary;
+        } catch (error) {
+            console.error('Error loading payment method summary:', error);
+            return [];
+        }
+    }
+    
+    // Update dashboard stats
+    function updateStats(expenses) {
+        const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+        const avgExpense = expenses.length > 0 ? totalExpenses / expenses.length : 0;
+        
+        document.getElementById('total-expenses').textContent = formatCurrency(totalExpenses);
+        document.getElementById('avg-expense').textContent = formatCurrency(avgExpense);
+        document.getElementById('expense-count').textContent = expenses.length;
+    }
+    
+    // Update category chart
+    function updateCategoryChart(categorySummary) {
+        const labels = [];
+        const data = [];
+        const backgroundColors = [];
+        
+        categorySummary.forEach(category => {
+            const categoryInfo = categoryColors[category._id] || { name: 'Unknown', color: '#ccc' };
+            labels.push(categoryInfo.name);
+            data.push(category.total);
+            backgroundColors.push(categoryInfo.color);
+        });
+        
+        if (categoryChart) {
+            categoryChart.data.labels = labels;
+            categoryChart.data.datasets[0].data = data;
+            categoryChart.data.datasets[0].backgroundColor = backgroundColors;
+            categoryChart.update();
+        } else {
+            const ctx = document.getElementById('category-chart').getContext('2d');
+            categoryChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+    }
+    
+    // Update monthly chart
+    function updateMonthlyChart(monthlySummary) {
+        const labels = monthlySummary.map(item => item.month_name);
+        const data = monthlySummary.map(item => item.total);
+        
+        if (monthlyChart) {
+            monthlyChart.data.labels = labels;
+            monthlyChart.data.datasets[0].data = data;
+            monthlyChart.update();
+        } else {
+            const ctx = document.getElementById('monthly-chart').getContext('2d');
+            monthlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Monthly Expenses',
+                        data: data,
+                        backgroundColor: '#3498db'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    }
+    
+    // Update payment method chart
+    function updatePaymentMethodChart(paymentMethodSummary) {
+        const labels = paymentMethodSummary.map(item => item._id || 'Unknown');
+        const data = paymentMethodSummary.map(item => item.total);
+        
+        // Generate colors for payment methods
+        const backgroundColors = [
+            '#2ecc71', '#3498db', '#9b59b6', '#e74c3c', '#f39c12', 
+            '#1abc9c', '#d35400', '#34495e', '#7f8c8d', '#c0392b'
+        ];
+        
+        if (paymentMethodChart) {
+            paymentMethodChart.data.labels = labels;
+            paymentMethodChart.data.datasets[0].data = data;
+            paymentMethodChart.update();
+        } else {
+            const ctx = document.getElementById('payment-method-chart').getContext('2d');
+            paymentMethodChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors.slice(0, labels.length)
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+    }
+    
+    // Update recent expenses list
+    function updateRecentExpenses(expenses) {
+        const recentExpensesContainer = document.getElementById('recent-expenses');
+        recentExpensesContainer.innerHTML = '';
+        
+        // Sort expenses by date (newest first)
+        const sortedExpenses = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        // Display only the 5 most recent
+        const recentExpenses = sortedExpenses.slice(0, 5);
+        
+        if (recentExpenses.length === 0) {
+            recentExpensesContainer.innerHTML = '<p>No expenses found in the selected period.</p>';
+            return;
+        }
+        
+        recentExpenses.forEach(expense => {
+            const categoryInfo = categoryColors[expense.category_id] || { name: 'Unknown', color: '#ccc' };
+            
+            const expenseItem = document.createElement('div');
+            expenseItem.className = 'expense-item';
+            expenseItem.innerHTML = `
+                <div class="row">
+                    <div class="col-md-7">
+                        <div>${expense.description}</div>
+                        <div class="expense-date">${formatDate(expense.date)}</div>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="category-badge" style="background-color: ${categoryInfo.color}">
+                            ${categoryInfo.name}
+                        </span>
+                    </div>
+                    <div class="col-md-2 text-right">
+                        <span class="expense-amount">${formatCurrency(expense.amount)}</span>
+                    </div>
+                </div>
+            `;
+            
+            recentExpensesContainer.appendChild(expenseItem);
+        });
+    }
+    
+    // Load all dashboard data
+    async function loadDashboardData() {
+        // Get date range from filter
+        const period = document.getElementById('period-select').value;
+        const dateRange = getDateRange(period);
+        
+        // Load categories first
+        await loadCategories();
+        
+        // Load data in parallel
+        const [expenses, categorySummary, monthlySummary, paymentMethodSummary] = await Promise.all([
+            loadExpenses(dateRange.startDate, dateRange.endDate),
+            loadCategorySummary(dateRange.startDate, dateRange.endDate),
+            loadMonthlySummary(),
+            loadPaymentMethodSummary(dateRange.startDate, dateRange.endDate)
+        ]);
+        
+        // Update the dashboard
+        updateStats(expenses);
+        updateCategoryChart(categorySummary);
+        updateMonthlyChart(monthlySummary);
+        updatePaymentMethodChart(paymentMethodSummary);
+        updateRecentExpenses(expenses);
+    }
+    
+    // Initialize the dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        // Show/hide custom date fields based on period selection
+        document.getElementById('period-select').addEventListener('change', function() {
+            const showCustomDates = this.value === 'custom';
+            document.querySelectorAll('.custom-date-range').forEach(el => {
+                el.style.display = showCustomDates ? 'block' : 'none';
+            });
+        });
+        
+        // Handle date filter form submission
+        document.getElementById('date-filter-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            loadDashboardData();
+        });
+        
+        // Set default dates for custom range (this month)
+        const today = new Date();
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+        
+        document.getElementById('start-date').value = firstDayOfMonth;
+        document.getElementById('end-date').value = lastDayOfMonth;
+        
+        // Initial load
+        loadDashboardData();
+    });
+</script>
+{% endblock %}

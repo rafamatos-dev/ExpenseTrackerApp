@@ -1,11 +1,14 @@
-# routes.py - All application routes
+# routes/routes.py - All application routes
 from flask import render_template, request, jsonify
+import datetime
 
 def register_routes(app, mongo):
-    # Basic route
+    # Basic route - Home page
     @app.route('/')
     def index():
-        return render_template('index.html')
+        # Current year for footer copyright
+        current_year = datetime.datetime.now().year
+        return render_template('index.html', year=current_year)
 
     # Route to get all items from a collection
     @app.route('/api/items', methods=['GET'])
